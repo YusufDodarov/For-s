@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="tg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Иловаи Видеоҳо бо IndexedDB</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        #uploadButton, #deleteAllBtn {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            border-radius: 5px;
+            cursor: pointer;
+            border: none;
+            margin: 10px;
+        }
+        #uploadButton {
+            background-color: #007bff;
+        }
+        #uploadButton:hover {
+            background-color: #0056b3;
+        }
+        #deleteAllBtn {
+            background-color: #dc3545;
+        }
+        #deleteAllBtn:hover {
+            background-color: #c82333;
+        }
+        .video-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .video-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .delete-button, .download-button {
+            margin-top: 5px;
+            padding: 5px 10px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        .delete-button {
+            background-color: #ff4d4d;
+            color: white;
+        }
+        .delete-button:hover {
+            background-color: #cc0000;
+        }
+        .download-button {
+            background-color: #28a745;
+            color: white;
+        }
+        .download-button:hover {
+            background-color: #1e7e34;
+        }
+        .video-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        video {
+            max-width: 80%;
+            height: auto;
+        }
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Видеоҳои худро сабт кунед</h1>
+    <button id="uploadButton">Иловаи Видео</button>
+    <button id="deleteAllBtn">Удалить Все</button>
+    <input type="file" accept="video/*" multiple id="videoInput">
+    <div class="video-container" id="videoContainer"></div>
+
+    <script>
+        const dbName = "VideoDB";
+        let db;
+
+        function initDB() {
+            const request = indexedDB.open(dbName, 1);
+            request.onupgradeneeded = function(event) {
+                db = event.target.result;
+                db.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
+            };
+            request.onsuccess = function(event) {
+                db = event.target.result;
+                loadVideos();
+            };
+        }
+
+        function saveVideo(videoData, videoName) {
+            const transaction = db.transaction(["videos"], "readwrite");
+            const store = transaction.objectStore("videos");
+            store.add({ video: videoData, name: videoName });
+        }
+
+        function loadVideos() {
+            const transaction = db.transaction(["videos"], "readonly");
+            const store = transaction.objectStore("videos");
+            const request = store.getAll();
+
+            request.onsuccess = function() {
+                const videos = request.result;
+                videos.forEach(video => addVideoToPage(video.video, video.name, false));
+            };
+        }
+
+        function deleteAllVideos() {
+            const transaction = db.transaction(["videos"], "readwrite");
+            const store = transaction.objectStore("videos");
+            store.clear(); 
+            document.getElementById("videoContainer").innerHTML = ""; 
+        }
+
+        function removeVideo(videoData) {
+            const transaction = db.transaction(["videos"], "readwrite");
+            const store = transaction.objectStore("videos");
+
+            store.openCursor().onsuccess = function(event) {
+                const cursor = event.target.result;
+                if (cursor) {
+                    if (cursor.value.video === videoData) {
+                        cursor.delete();
+                    }
+                    cursor.continue();
+                }
+            };
+        }
+
+        function addVideoToPage(videoData, videoName, saveToDB = true) {
+            const videoContainer = document.getElementById("videoContainer");
+            const videoWrapper = document.createElement("div");
+            videoWrapper.classList.add("video-wrapper");
+
+            const videoElement = document.createElement("video");
+            videoElement.src = videoData;
+            videoElement.controls = true;
+
+            const downloadButton = document.createElement("button");
+            downloadButton.innerText = "Скачать";
+            downloadButton.classList.add("download-button");
+            downloadButton.addEventListener("click", function () {
+                const a = document.createElement("a");
+                a.href = videoData;
+                a.download = videoName + ".mp4";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+
+            const deleteButton = document.createElement("button");
+            deleteButton.innerText = "Удалить";
+            deleteButton.classList.add("delete-button");
+            deleteButton.addEventListener("click", function () {
+                videoWrapper.remove();
+                removeVideo(videoData);
+            });
+
+            const videoTitle = document.createElement("div");
+            videoTitle.classList.add("video-title");
+            videoTitle.innerText = videoName;
+
+            videoWrapper.appendChild(videoElement);
+            videoWrapper.appendChild(downloadButton);
+            videoWrapper.appendChild(deleteButton);
+            videoWrapper.appendChild(videoTitle);
+            videoContainer.appendChild(videoWrapper);
+
+            if (saveToDB) {
+                saveVideo(videoData, videoName);
+            }
+        }
+
+        document.getElementById("uploadButton").addEventListener("click", function () {
+            const videoInput = document.createElement("input");
+            videoInput.type = "file";
+            videoInput.accept = "video/*";
+            videoInput.multiple = false;
+            videoInput.click();
+            
+            videoInput.addEventListener("change", function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const videoName = prompt("Номи видео ворид кунед:");
+                    if (videoName) {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = function () {
+                            addVideoToPage(reader.result, videoName);
+                        };
+                    }
+                }
+            });
+        });
+
+        document.getElementById("deleteAllBtn").addEventListener("click", deleteAllVideos);
+
+        initDB();
+    </script>
+
+</body>
+</html>
